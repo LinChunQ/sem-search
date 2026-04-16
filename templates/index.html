@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Milvus 向量检索演示</title>
+    <style>
+        :root {
+            --bg: #f4efe7;
+            --panel: #fffaf4;
+            --text: #1f1b17;
+            --muted: #6a6258;
+            --line: #d9cdbf;
+            --accent: #b65a2a;
+            --accent-dark: #8f431b;
+            --success: #245b36;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at top left, #f8d8c0 0, transparent 28%),
+                radial-gradient(circle at top right, #f1e1c8 0, transparent 24%),
+                linear-gradient(180deg, #f7f2ea 0%, var(--bg) 100%);
+        }
+
+        .page {
+            width: min(1120px, calc(100% - 32px));
+            margin: 32px auto 48px;
+        }
+
+        .hero {
+            display: grid;
+            gap: 12px;
+            margin-bottom: 24px;
+            padding: 28px;
+            border: 1px solid rgba(182, 90, 42, 0.18);
+            border-radius: 24px;
+            background: rgba(255, 250, 244, 0.86);
+            backdrop-filter: blur(10px);
+        }
+
+        .hero h1 {
+            margin: 0;
+            font-size: clamp(28px, 4vw, 42px);
+            line-height: 1.1;
+        }
+
+        .hero p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 4px;
+        }
+
+        .tag {
+            padding: 8px 12px;
+            border: 1px solid var(--line);
+            border-radius: 999px;
+            background: #fff;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 20px;
+        }
+
+        .panel {
+            padding: 24px;
+            border-radius: 24px;
+            border: 1px solid var(--line);
+            background: var(--panel);
+            box-shadow: 0 18px 48px rgba(88, 61, 40, 0.08);
+        }
+
+        .panel h2 {
+            margin: 0 0 8px;
+            font-size: 24px;
+        }
+
+        .panel p {
+            margin: 0 0 16px;
+            color: var(--muted);
+            line-height: 1.6;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        textarea,
+        input[type="number"] {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 16px;
+            padding: 14px 16px;
+            font: inherit;
+            color: var(--text);
+            background: #fffdfa;
+        }
+
+        textarea {
+            min-height: 180px;
+            resize: vertical;
+        }
+
+        input[type="number"] {
+            min-height: 50px;
+        }
+
+        .row {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: 1fr 140px;
+            align-items: end;
+        }
+
+        button {
+            min-height: 50px;
+            border: 0;
+            border-radius: 16px;
+            padding: 0 18px;
+            font: inherit;
+            font-weight: 700;
+            color: #fff;
+            background: linear-gradient(135deg, var(--accent) 0%, var(--accent-dark) 100%);
+            cursor: pointer;
+        }
+
+        button:hover {
+            filter: brightness(1.04);
+        }
+
+        .message {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #f7eee6;
+            color: var(--success);
+            font-size: 14px;
+        }
+
+        .results {
+            margin-top: 20px;
+            display: grid;
+            gap: 14px;
+        }
+
+        .result-card {
+            padding: 16px;
+            border-radius: 18px;
+            border: 1px solid var(--line);
+            background: #fff;
+        }
+
+        .result-head {
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 10px;
+            color: var(--muted);
+            font-size: 13px;
+        }
+
+        .result-content {
+            margin: 0;
+            white-space: pre-wrap;
+            line-height: 1.7;
+        }
+
+        @media (max-width: 860px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+
+            .row {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <main class="page">
+        <section class="hero">
+            <h1>Milvus 文本向量检索</h1>
+            <p>页面提供两个最小操作：将文本做 embedding 后写入 Milvus，以及输入一段文本做相似度检索并按 TopN 返回结果。</p>
+            <div class="meta">
+                <span class="tag">Collection: {{ collection_name }}</span>
+                <span class="tag">Embedding Model: {{ model_name }}</span>
+            </div>
+        </section>
+
+        <section class="grid">
+            <article class="panel">
+                <h2>写入向量库</h2>
+                <p>每行视为一条独立文本，提交后会统一生成向量并写入 Milvus。</p>
+                <form action="{{ url_for('add_view') }}" method="post">
+                    <label for="add_text">输入内容</label>
+                    <textarea id="add_text" name="add_text" placeholder="一行一条文本，例如：&#10;昨天在超市买到过期牛奶&#10;电商平台买到破损洗地机">{{ add_text }}</textarea>
+                    <button type="submit">生成 Embedding 并入库</button>
+                </form>
+                {% if add_message %}
+                <div class="message">{{ add_message }}</div>
+                {% endif %}
+            </article>
+
+            <article class="panel">
+                <h2>相似度检索</h2>
+                <p>输入待检索内容，并指定返回条数 TopN。</p>
+                <form action="{{ url_for('search_view') }}" method="post">
+                    <label for="search_query">检索文本</label>
+                    <textarea id="search_query" name="search_query" placeholder="输入要进行向量检索的文本">{{ search_query }}</textarea>
+                    <div class="row">
+                        <div>
+                            <label for="top_k">TopN</label>
+                            <input id="top_k" name="top_k" type="number" min="1" max="20" value="{{ top_k }}">
+                        </div>
+                        <button type="submit">开始检索</button>
+                    </div>
+                </form>
+                {% if search_message %}
+                <div class="message">{{ search_message }}</div>
+                {% endif %}
+
+                {% if search_results %}
+                <div class="results">
+                    {% for item in search_results %}
+                    <section class="result-card">
+                        <div class="result-head">
+                            <span>ID: {{ item.id }}</span>
+                            <span>Score: {{ '%.4f'|format(item.score) }}</span>
+                        </div>
+                        <p class="result-content">{{ item.content }}</p>
+                    </section>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </article>
+        </section>
+    </main>
+</body>
+</html>

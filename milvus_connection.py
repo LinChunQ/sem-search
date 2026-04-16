@@ -79,6 +79,34 @@ def connect_to_milvus(alias: str = DEFAULT_ALIAS) -> str:
     return alias
 
 
+def check_milvus_connection(
+    alias: str = DEFAULT_ALIAS,
+    collection_name: str | None = None,
+) -> dict:
+    config = load_milvus_config()
+    connect_to_milvus(alias=alias)
+
+    db_name = str(config.get("MILVUS_DB_NAME", "default") or "default").strip() or "default"
+    connection_addr = connections.get_connection_addr(alias)
+    database_names = db.list_database(using=alias)
+    collection_names = utility.list_collections(using=alias)
+
+    result = {
+        "connected": connections.has_connection(alias),
+        "alias": alias,
+        "db_name": db_name,
+        "address": connection_addr,
+        "databases": database_names,
+        "collections": collection_names,
+    }
+
+    if collection_name:
+        result["target_collection"] = collection_name
+        result["target_collection_exists"] = utility.has_collection(collection_name, using=alias)
+
+    return result
+
+
 def get_collection(
     collection_name: str,
     dim: int,
@@ -103,3 +131,14 @@ def get_collection(
     collection = Collection(name=collection_name, schema=schema, using=alias)
     collection.create_index(field_name="vector", index_params=DEFAULT_INDEX_PARAMS)
     return collection
+
+
+if __name__ == "__main__":
+    try:
+        status = check_milvus_connection(collection_name="claim_deduplication")
+        print("Milvus connection check succeeded.")
+        for key, value in status.items():
+            print(f"{key}: {value}")
+    except Exception as exc:
+        print("Milvus connection check failed.")
+        print(f"{type(exc).__name__}: {exc}")
