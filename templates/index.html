@@ -108,7 +108,8 @@
         }
 
         textarea,
-        input[type="number"] {
+        input[type="number"],
+        input[type="file"] {
             width: 100%;
             border: 1px solid var(--line);
             border-radius: 16px;
@@ -123,7 +124,8 @@
             resize: vertical;
         }
 
-        input[type="number"] {
+        input[type="number"],
+        input[type="file"] {
             min-height: 50px;
         }
 
@@ -212,10 +214,12 @@
         <section class="grid">
             <article class="panel">
                 <h2>写入向量库</h2>
-                <p>每行视为一条独立文本，提交后会统一生成向量并写入 Milvus。</p>
-                <form action="{{ url_for('add_view') }}" method="post">
+                <p>默认会把整个输入框内容作为一条完整文本入库；如果需要批量导入，请上传 JSON 文件，格式为 <code>[{"data": "..."}, {"data": "..."}]</code>。</p>
+                <form action="{{ url_for('add_view') }}" method="post" enctype="multipart/form-data">
                     <label for="add_text">输入内容</label>
-                    <textarea id="add_text" name="add_text" placeholder="一行一条文本，例如：&#10;昨天在超市买到过期牛奶&#10;电商平台买到破损洗地机">{{ add_text }}</textarea>
+                    <textarea id="add_text" name="add_text" placeholder="输入一整段文本，例如：&#10;1.主要诉求：请求核查处理结果&#10;2.事实和理由：这里可以输入多段长文本，提交时会整体作为一条数据入库。">{{ add_text }}</textarea>
+                    <label for="add_file">JSON 批量导入文件</label>
+                    <input id="add_file" name="add_file" type="file" accept=".json,application/json">
                     <button type="submit">生成 Embedding 并入库</button>
                 </form>
                 {% if add_message %}

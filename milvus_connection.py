@@ -19,6 +19,11 @@ DEFAULT_INDEX_PARAMS = {
     "metric_type": "COSINE",
     "params": {"M": 16, "efConstruction": 64},
 }
+DEFAULT_SPARSE_INDEX_PARAMS = {
+    "index_type": "SPARSE_INVERTED_INDEX",
+    "metric_type": "IP",
+    "params": {"inverted_index_algo": "DAAT_MAXSCORE"},
+}
 
 
 def _config_flag(config: dict, name: str, default: bool = False) -> bool:
@@ -37,6 +42,25 @@ def load_milvus_config() -> dict:
 
     raw_config = dotenv_values(CONFIG_FILE)
     return {key: value for key, value in raw_config.items() if key is not None}
+
+
+def _get_field_names(collection: Collection) -> set[str]:
+    return {field.name for field in collection.schema.fields}
+
+
+def _has_index(collection: Collection, field_name: str) -> bool:
+    return any(index.field_name == field_name for index in collection.indexes)
+
+
+def _ensure_collection_indexes(collection: Collection, enable_hybrid: bool) -> None:
+    if not _has_index(collection, "vector"):
+        collection.create_index(field_name="vector", index_params=DEFAULT_INDEX_PARAMS)
+
+    if enable_hybrid and not _has_index(collection, "sparse_vector"):
+        collection.create_index(
+            field_name="sparse_vector",
+            index_params=DEFAULT_SPARSE_INDEX_PARAMS,
+        )
 
 
 def connect_to_milvus(alias: str = DEFAULT_ALIAS) -> str:
@@ -112,6 +136,7 @@ def get_collection(
     dim: int,
     alias: str = DEFAULT_ALIAS,
     drop_existing: bool = False,
+    enable_hybrid: bool = False,
 ) -> Collection:
     connect_to_milvus(alias=alias)
 
@@ -119,17 +144,30 @@ def get_collection(
         utility.drop_collection(collection_name, using=alias)
 
     if utility.has_collection(collection_name, using=alias):
-        return Collection(name=collection_name, using=alias)
+        collection = Collection(name=collection_name, using=alias)
+        field_names = _get_field_names(collection)
+
+        if enable_hybrid and "sparse_vector" not in field_names:
+            raise ValueError(
+                f"Collection '{collection_name}' exists, but it uses the old dense-only schema. "
+                "To enable BGE-M3 hybrid search, recreate the collection once "
+                "(for example, set MILVUS_RECREATE_COLLECTION=1) or use a new collection name."
+            )
+
+        _ensure_collection_indexes(collection, enable_hybrid=enable_hybrid)
+        return collection
 
     fields = [
         FieldSchema(name="id", dtype=DataType.INT64, is_primary=True, auto_id=True),
         FieldSchema(name="content", dtype=DataType.VARCHAR, max_length=5000),
         FieldSchema(name="vector", dtype=DataType.FLOAT_VECTOR, dim=dim),
     ]
+    if enable_hybrid:
+        fields.append(FieldSchema(name="sparse_vector", dtype=DataType.SPARSE_FLOAT_VECTOR))
     schema = CollectionSchema(fields, description="Complaint deduplication collection")
 
     collection = Collection(name=collection_name, schema=schema, using=alias)
-    collection.create_index(field_name="vector", index_params=DEFAULT_INDEX_PARAMS)
+    _ensure_collection_indexes(collection, enable_hybrid=enable_hybrid)
     return collection
 
 
