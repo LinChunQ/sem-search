@@ -17,7 +17,7 @@ except ImportError:
 MODEL_NAME = "BAAI/bge-m3"
 VECTOR_DIM = 1024
 DENSE_SEARCH_PARAMS = {"metric_type": "COSINE", "params": {"ef": 64}}
-SPARSE_SEARCH_PARAMS = {"metric_type": "IP", "params": {"drop_ratio_search": 0.0}}
+SPARSE_SEARCH_PARAMS = {"metric_type": "IP", "params": {"drop_ratio_search": 0.1}}
 
 
 def _config_flag(config: dict, name: str, default: bool = False) -> bool:
@@ -49,6 +49,7 @@ class SemSearchService:
 
         self.model_source = self._resolve_model_source(config)
         self.using_local_model = Path(self.model_source).exists()
+        self._configure_model_cache(config)
         self._configure_huggingface_access(config)
 
         self.use_fp16 = _config_flag(config, "BGE_M3_USE_FP16", False)
@@ -84,6 +85,22 @@ class SemSearchService:
     @property
     def model_name(self) -> str:
         return self.model_source
+
+    def _configure_model_cache(self, config: dict) -> None:
+        cache_root = str(config.get("HF_HOME", "") or "").strip()
+        if cache_root:
+            cache_path = Path(cache_root)
+        else:
+            cache_path = Path(__file__).resolve().parent / ".cache" / "huggingface"
+
+        hub_cache = cache_path / "hub"
+        transformers_cache = cache_path / "transformers"
+        hub_cache.mkdir(parents=True, exist_ok=True)
+        transformers_cache.mkdir(parents=True, exist_ok=True)
+
+        os.environ.setdefault("HF_HOME", str(cache_path))
+        os.environ.setdefault("HUGGINGFACE_HUB_CACHE", str(hub_cache))
+        os.environ.setdefault("TRANSFORMERS_CACHE", str(transformers_cache))
 
     def _configure_huggingface_access(self, config: dict) -> None:
         if self.using_local_model:

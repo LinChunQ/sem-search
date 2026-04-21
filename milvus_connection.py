@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 from dotenv import dotenv_values
 from pymilvus import (
@@ -60,6 +61,30 @@ def _ensure_collection_indexes(collection: Collection, enable_hybrid: bool) -> N
         collection.create_index(
             field_name="sparse_vector",
             index_params=DEFAULT_SPARSE_INDEX_PARAMS,
+        )
+
+
+def _parse_server_version(version: str) -> tuple[int, int, int] | None:
+    match = re.search(r"(\d+)\.(\d+)\.(\d+)", version)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _ensure_hybrid_supported(alias: str, enable_hybrid: bool) -> None:
+    if not enable_hybrid:
+        return
+
+    server_version = utility.get_server_version(using=alias)
+    parsed_version = _parse_server_version(server_version)
+    if parsed_version is None:
+        return
+
+    if parsed_version < (2, 4, 0):
+        raise ValueError(
+            f"Milvus server {server_version} does not support the sparse-vector indexes "
+            "required by BGE-M3 hybrid search. Upgrade Milvus to a release with "
+            "SPARSE_FLOAT_VECTOR / SPARSE_INVERTED_INDEX support before enabling SEARCH_MODE=hybrid."
         )
 
 
@@ -139,6 +164,7 @@ def get_collection(
     enable_hybrid: bool = False,
 ) -> Collection:
     connect_to_milvus(alias=alias)
+    _ensure_hybrid_supported(alias=alias, enable_hybrid=enable_hybrid)
 
     if drop_existing and utility.has_collection(collection_name, using=alias):
         utility.drop_collection(collection_name, using=alias)
